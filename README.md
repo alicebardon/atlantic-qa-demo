@@ -1,11 +1,11 @@
 # Atlantic · Agentic QA Demo
 
-A live demo of the **agentic game QA thesis**: two Claude agents working in sequence to analyze a gameplay bug video and file a structured bug ticket.
+A live demo of the **agentic game QA thesis**: AI agents watch a gameplay video, flag every bug they find, and file structured tickets — automatically.
 
-- **Agent 01 (QA)** — vision model analyzes 7 keyframes from a gameplay capture, detects the anomaly, classifies the bug.
-- **Agent 02 (Orchestrator)** — takes the QA report, produces a structured Jira-style ticket with severity, dedup, auto-fix eligibility.
+- **Agent 01 (QA) · Gemini 2.5 Flash** — watches the full gameplay video natively, identifies every bug using structured output, streams findings in real-time.
+- **Agent 02 (Orchestrator) · Claude Sonnet 4** — receives each bug one by one as Gemini flags them, produces a Jira-style ticket with severity, dedup check, and auto-fix eligibility.
 
-The video shown is a real Cyberpunk 2077 ragdoll physics bug (credit: Reddit `u/Disrupter52`).
+Multiple bugs → multiple tickets, filed sequentially as the video is analyzed.
 
 ---
 
@@ -15,16 +15,45 @@ The video shown is a real Cyberpunk 2077 ragdoll physics bug (credit: Reddit `u/
 # 1. Install deps
 npm install
 
-# 2. Add your Anthropic API key
+# 2. Add your API keys
 cp .env.example .env
-# then edit .env and paste your key
+# edit .env and add ANTHROPIC_API_KEY and GEMINI_API_KEY
 
-# 3. Run
+# 3. Add a gameplay clip
+# Drop a clip.mp4 (or clip.mov — auto-converted) into a new folder:
+#   public/scenarios/my-game/clip.mp4
+# Optionally add a meta.json: { "game": "...", "engine": "...", "title": "..." }
+
+# 4. Run
 npm start
 # → http://localhost:3000
 ```
 
-That's it. Open the URL, click **Run QA Agent**, and watch both agents work.
+Open the URL, select your scenario, click **Run QA Analysis**, and watch bugs get flagged and tickets filed in real-time.
+
+---
+
+## How it works
+
+```
+Browser                  Backend (Node/Express)          AI APIs
+───────                  ──────────────────────          ───────
+Run QA Analysis ──POST──▶ /api/gemini-agent
+                          uploads clip.mp4 to
+                          Gemini File API          ──▶   gemini-2.5-flash
+                          streams analysis back    ◀──
+                          detects [BUG]...[/BUG]
+                          emits bug_found events
+      ◀── SSE stream ───
+
+  (for each bug_found)
+bug report      ──POST──▶ /api/orchestrator        ──▶   claude-sonnet-4
+                          parses JSON ticket        ◀──
+      ◀── JSON ticket ──
+      render ticket card
+```
+
+The browser **never** sees any API key. All AI calls go through the local Express proxy.
 
 ---
 
@@ -33,64 +62,58 @@ That's it. Open the URL, click **Run QA Agent**, and watch both agents work.
 ```
 atlantic-qa-demo/
 ├── server/
-│   └── index.js          ← Express backend, hides the API key, proxies to Anthropic
+│   └── index.js               ← Express backend: .mov conversion, Gemini upload,
+│                                 bug detection, orchestrator proxy
 ├── public/
-│   ├── index.html        ← Three-panel UI (video / agent / orchestrator)
-│   ├── styles.css        ← Atlantic house style (Geist, #1F58F2 blue, #E87A2F orange)
-│   ├── app.js            ← Frontend logic, calls /api/qa-agent & /api/orchestrator
-│   ├── clip.mp4          ← 9-second bug clip (Cyberpunk 2077)
-│   └── kf_01.jpg … kf_07.jpg  ← Extracted keyframes
-├── .env.example          ← Template for ANTHROPIC_API_KEY
-├── .gitignore
+│   ├── index.html             ← 3-panel UI (video / Gemini analysis / tickets)
+│   ├── styles.css             ← Dark theme, Atlantic blue/orange
+│   ├── app.js                 ← Frontend: SSE handling, rate-limited ticket queue
+│   └── scenarios/
+│       └── your-scenario/
+│           ├── clip.mp4       ← gameplay video (gitignored)
+│           └── meta.json      ← optional: game, engine, platform, tags
+├── .env.example               ← ANTHROPIC_API_KEY + GEMINI_API_KEY template
 └── package.json
 ```
 
 ---
 
-## Architecture
+## Adding scenarios
+
+Drop a folder into `public/scenarios/` with a `clip.mp4` (or `clip.mov`):
 
 ```
-Browser                  Backend (Node/Express)          Anthropic API
-──────                   ──────────────────────          ─────────────
-Run QA Agent  ──POST──▶  /api/qa-agent                   
-                         reads keyframes from disk
-                         builds multi-image request ──▶  claude-sonnet-4
-                         streams SSE response back  ◀──  
-     ◀─stream of text────
-                                                         
-QA report    ──POST──▶   /api/orchestrator                
-                         adds system prompt          ──▶  claude-sonnet-4
-                         parses JSON response        ◀──  
-     ◀──── JSON ────────
-Render ticket
+public/scenarios/
+└── my-game-bugs/
+    ├── clip.mov        ← auto-converted to clip.mp4 on first start
+    └── meta.json       ← optional metadata
 ```
 
-The browser **never** sees the API key. Everything goes through the local proxy.
+`meta.json` shape:
+```json
+{
+  "title": "Physics bugs compilation",
+  "game": "My Game",
+  "engine": "Unreal 5",
+  "platform": "PC",
+  "tags": ["physics", "ragdoll"],
+  "duration": 45
+}
+```
 
 ---
 
-## Extending with Claude Code
+## Extending
 
-A few directions this can go:
-
-1. **Swap models** — change `claude-sonnet-4-20250514` in `server/index.js` to try Opus for the QA agent and Haiku for the orchestrator (cost/speed tradeoff).
-2. **Real Jira integration** — replace the ticket render with a real POST to Jira's REST API. The ticket shape is already Jira-compatible.
-3. **Multiple bug types** — add a dropdown to switch between different clips (ragdoll / clipping / pathfinding) and watch the agent handle each.
-4. **More agents** — add a Localization agent (vision check per language), a Performance agent (FPS telemetry analysis), etc. — matches the architecture diagram in the deep dive.
-5. **Dedup via real embeddings** — currently simulated; plug in FAISS + `voyage-3` embeddings over past ticket titles.
-
----
-
-## Demo notes
-
-- **What the agent catches**: the Cyberpunk ragdoll bug is subtle but the agent picks it up consistently — a human body pinned to vehicle geometry, visible across multiple frames.
-- **Timing**: agent completes in ~3-6s, orchestrator in ~2-3s. The displayed "~15 min human" baseline is conservative — writing a proper bug ticket with repro steps takes longer.
-- **Output is live** — every run produces slightly different wording. Run it once before a live demo so you know roughly what to expect.
+1. **Real Jira integration** — replace the ticket render with a POST to Jira's REST API. The ticket shape is already Jira-compatible.
+2. **Swap models** — try `gemini-2.5-pro` for deeper video analysis, or `claude-haiku-4-5` for the orchestrator for faster/cheaper ticket generation.
+3. **Real dedup** — currently simulated by the LLM; plug in FAISS + vector embeddings over past ticket titles.
+4. **More agents** — add a Localization agent (per-language visual check), a Performance agent (FPS telemetry), a Regression agent (diff against known-good build).
+5. **Webhook output** — have the orchestrator POST tickets directly to Slack, Linear, or GitHub Issues.
 
 ---
 
 ## Credits
 
-- Video: Reddit `u/Disrupter52` (Cyberpunk 2077, © CD Projekt RED)
 - Demo: Alice Bardon Catineau / Atlantic Labs, April 2026
-- Built with Claude (Anthropic)
+- Built with Gemini 2.5 Flash (Google) + Claude Sonnet 4 (Anthropic)
