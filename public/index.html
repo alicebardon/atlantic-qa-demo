@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Atlantic · Agentic QA Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="header">
+  <div>
+    <div class="brand"><span class="brand-dot"></span>Atlantic · Agentic QA Demo</div>
+    <h1 id="header-title">Loading scenario…</h1>
+  </div>
+  <div class="header-right">
+    <span class="demo-tag">Live Demo</span><br>
+    <span id="header-source"></span><br>
+    <span id="header-engine"></span>
+  </div>
+</header>
+
+<div class="stage">
+
+  <!-- VIDEO PANEL -->
+  <section class="panel" id="panel-video">
+    <div class="panel-header">
+      <div>
+        <div class="label">Input</div>
+        <h2>Gameplay capture</h2>
+      </div>
+      <div class="status" id="video-status"><span class="status-dot done"></span><span id="frame-count"></span></div>
+    </div>
+    <div class="panel-body">
+
+      <!-- Scenario selector -->
+      <div class="scenario-selector">
+        <label>Scenario</label>
+        <select id="scenario-select"></select>
+      </div>
+
+      <div class="video-wrap">
+        <video id="player" controls autoplay muted loop playsinline></video>
+      </div>
+      <div class="video-meta" id="video-meta"></div>
+
+      <button class="cta" id="run-btn">Run QA Analysis →</button>
+    </div>
+  </section>
+
+  <!-- GEMINI AGENT PANEL -->
+  <section class="panel" id="panel-gemini">
+    <div class="panel-header">
+      <div>
+        <div class="label">Agent 01 — vision · full video</div>
+        <h2>QA Agent · gemini-2.5-flash</h2>
+      </div>
+      <div class="status">
+        <span class="status-dot" id="gemini-dot"></span>
+        <span id="gemini-status">Idle</span>
+      </div>
+    </div>
+    <div class="panel-body" id="gemini-body">
+      <div class="agent-idle">
+        <div class="agent-idle-icon"></div>
+        <div>Awaiting video input</div>
+        <div style="margin-top:4px;font-size:11px">Native video understanding — no frame extraction</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ORCHESTRATOR PANEL -->
+  <section class="panel" id="panel-orch">
+    <div class="panel-header">
+      <div>
+        <div class="label">Agent 02 — routing</div>
+        <h2>Orchestrator · ticket gen</h2>
+      </div>
+      <div class="status">
+        <span class="status-dot" id="orch-dot"></span>
+        <span id="orch-status">Idle</span>
+      </div>
+    </div>
+    <div class="panel-body" id="orch-body">
+      <div class="orch-pending">
+        Waiting for QA Agent report<br>
+        <span style="font-size:11px">Will dedupe, classify severity & file ticket</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <div><b>Atlantic Labs</b> · Agentic QA build thesis · demo</div>
+  <div id="footer-credit"></div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

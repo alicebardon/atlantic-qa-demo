@@ -1,0 +1,11 @@
+node_modules/
+.env
+.DS_Store
+*.log
+dist/
+.vscode/
+
+# Video files — add your own clips locally
+public/**/*.mp4
+public/**/*.mov
+public/**/*.kf_*.jpg
