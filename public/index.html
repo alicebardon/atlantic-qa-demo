@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Atlantic · Agentic QA Demo</title>
+<title>Atlantic · Multi-Agent QA Demo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -14,69 +14,117 @@
 <header class="header">
   <div>
     <div class="brand"><span class="brand-dot"></span>Atlantic · Agentic QA Demo</div>
-    <h1 id="header-title">Loading scenario…</h1>
+    <h1>Parallel Multi-Agent · Bug Detection</h1>
   </div>
   <div class="header-right">
-    <span class="demo-tag">Live Demo</span><br>
-    <span id="header-source"></span><br>
-    <span id="header-engine"></span>
+    <span class="demo-tag">Live Demo</span>
   </div>
 </header>
 
 <div class="stage">
 
-  <!-- VIDEO PANEL -->
-  <section class="panel" id="panel-video">
-    <div class="panel-header">
-      <div>
-        <div class="label">Input</div>
-        <h2>Gameplay capture</h2>
-      </div>
-      <div class="status" id="video-status"><span class="status-dot done"></span><span id="frame-count"></span></div>
-    </div>
-    <div class="panel-body">
+  <!-- 3 QA Agent slots -->
+  <div class="slots-row">
 
-      <!-- Scenario selector -->
-      <div class="scenario-selector">
-        <label>Scenario</label>
-        <select id="scenario-select"></select>
+    <!-- Slot A -->
+    <section class="panel" id="slot-panel-0">
+      <div class="panel-header">
+        <div>
+          <div class="label">Agent A — vision · full video</div>
+          <h2>QA Agent · gemini-2.5-flash</h2>
+        </div>
+        <div class="status">
+          <span class="status-dot" id="slot-dot-0"></span>
+          <span id="slot-status-0">Idle</span>
+        </div>
       </div>
+      <div class="panel-body">
+        <div class="scenario-selector">
+          <label>Scenario</label>
+          <select id="slot-select-0"></select>
+        </div>
+        <div class="video-wrap">
+          <video id="slot-player-0" controls autoplay muted loop playsinline></video>
+        </div>
+        <div class="slot-buglog" id="slot-buglog-0">
+          <div class="agent-idle">
+            <div class="agent-idle-icon"></div>
+            <div>Awaiting input</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-      <div class="video-wrap">
-        <video id="player" controls autoplay muted loop playsinline></video>
+    <!-- Slot B -->
+    <section class="panel" id="slot-panel-1">
+      <div class="panel-header">
+        <div>
+          <div class="label">Agent B — vision · full video</div>
+          <h2>QA Agent · gemini-2.5-flash</h2>
+        </div>
+        <div class="status">
+          <span class="status-dot" id="slot-dot-1"></span>
+          <span id="slot-status-1">Idle</span>
+        </div>
       </div>
-      <div class="video-meta" id="video-meta"></div>
+      <div class="panel-body">
+        <div class="scenario-selector">
+          <label>Scenario</label>
+          <select id="slot-select-1"></select>
+        </div>
+        <div class="video-wrap">
+          <video id="slot-player-1" controls autoplay muted loop playsinline></video>
+        </div>
+        <div class="slot-buglog" id="slot-buglog-1">
+          <div class="agent-idle">
+            <div class="agent-idle-icon"></div>
+            <div>Awaiting input</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-      <button class="cta" id="run-btn">Run QA Analysis →</button>
-    </div>
-  </section>
+    <!-- Slot C -->
+    <section class="panel" id="slot-panel-2">
+      <div class="panel-header">
+        <div>
+          <div class="label">Agent C — vision · full video</div>
+          <h2>QA Agent · gemini-2.5-flash</h2>
+        </div>
+        <div class="status">
+          <span class="status-dot" id="slot-dot-2"></span>
+          <span id="slot-status-2">Idle</span>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="scenario-selector">
+          <label>Scenario</label>
+          <select id="slot-select-2"></select>
+        </div>
+        <div class="video-wrap">
+          <video id="slot-player-2" controls autoplay muted loop playsinline></video>
+        </div>
+        <div class="slot-buglog" id="slot-buglog-2">
+          <div class="agent-idle">
+            <div class="agent-idle-icon"></div>
+            <div>Awaiting input</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  <!-- GEMINI AGENT PANEL -->
-  <section class="panel" id="panel-gemini">
-    <div class="panel-header">
-      <div>
-        <div class="label">Agent 01 — vision · full video</div>
-        <h2>QA Agent · gemini-2.5-flash</h2>
-      </div>
-      <div class="status">
-        <span class="status-dot" id="gemini-dot"></span>
-        <span id="gemini-status">Idle</span>
-      </div>
-    </div>
-    <div class="panel-body" id="gemini-body">
-      <div class="agent-idle">
-        <div class="agent-idle-icon"></div>
-        <div>Awaiting video input</div>
-        <div style="margin-top:4px;font-size:11px">Native video understanding — no frame extraction</div>
-      </div>
-    </div>
-  </section>
+  </div><!-- /.slots-row -->
 
-  <!-- ORCHESTRATOR PANEL -->
+  <!-- Run button bar -->
+  <div class="control-bar">
+    <button class="cta" id="run-btn">Run 3 QA Agents →</button>
+  </div>
+
+  <!-- Orchestrator — full width -->
   <section class="panel" id="panel-orch">
     <div class="panel-header">
       <div>
-        <div class="label">Agent 02 — routing</div>
+        <div class="label">Agent 02 — routing · all streams</div>
         <h2>Orchestrator · ticket gen</h2>
       </div>
       <div class="status">
@@ -86,17 +134,17 @@
     </div>
     <div class="panel-body" id="orch-body">
       <div class="orch-pending">
-        Waiting for QA Agent report<br>
-        <span style="font-size:11px">Will dedupe, classify severity & file ticket</span>
+        Waiting for QA Agents to start<br>
+        <span style="font-size:11px">Low severity bugs dismissed · rest get tickets</span>
       </div>
     </div>
   </section>
 
-</div>
+</div><!-- /.stage -->
 
 <footer class="footer">
   <div><b>Atlantic Labs</b> · Agentic QA build thesis · demo</div>
-  <div id="footer-credit"></div>
+  <div></div>
 </footer>
 
 <script src="/app.js"></script>

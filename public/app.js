@@ -1,10 +1,37 @@
 /**
- * Atlantic QA Demo — frontend
+ * Atlantic QA Demo — Multi-Agent Parallel frontend
+ *
+ * 3 Gemini agents watch 3 videos simultaneously.
+ * Bugs flow into a shared orchestrator queue.
+ * Low severity bugs are dismissed and counted; rest get Jira tickets.
  */
 
-let SCENARIOS = [];
-let currentScenario = null;
+const NUM_SLOTS = 3;
+const SLOT_LABELS = ['A', 'B', 'C'];
 
+let SCENARIOS = [];
+
+// ————————————————————————————————————————————————
+// DOM helpers
+// ————————————————————————————————————————————————
+function slotEls(i) {
+  return {
+    select:  document.getElementById(`slot-select-${i}`),
+    player:  document.getElementById(`slot-player-${i}`),
+    buglog:  document.getElementById(`slot-buglog-${i}`),
+    dot:     document.getElementById(`slot-dot-${i}`),
+    status:  document.getElementById(`slot-status-${i}`),
+  };
+}
+
+const runBtn   = document.getElementById('run-btn');
+const orchBody = document.getElementById('orch-body');
+const orchDot  = document.getElementById('orch-dot');
+const orchStatus = document.getElementById('orch-status');
+
+// ————————————————————————————————————————————————
+// Bootstrap
+// ————————————————————————————————————————————————
 (async function init() {
   try {
     const res = await fetch('/api/scenarios');
@@ -15,89 +42,49 @@ let currentScenario = null;
   }
 
   if (SCENARIOS.length === 0) {
-    document.getElementById('header-title').textContent = 'No scenarios found';
+    document.querySelector('h1').textContent = 'No scenarios found';
     return;
   }
 
-  const select = document.getElementById('scenario-select');
-  for (const s of SCENARIOS) {
-    const opt = document.createElement('option');
-    opt.value = s.id;
-    opt.textContent = s.game ? `${s.game} — ${s.title}` : s.title || s.id;
-    select.appendChild(opt);
+  // Populate all 3 slot selectors and load their videos
+  for (let i = 0; i < NUM_SLOTS; i++) {
+    const { select, player } = slotEls(i);
+    for (const s of SCENARIOS) {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.game ? `${s.game} — ${s.title || s.id}` : s.title || s.id;
+      select.appendChild(opt);
+    }
+    // Default each slot to a different scenario if available, else wrap around
+    const defaultIdx = i % SCENARIOS.length;
+    select.value = SCENARIOS[defaultIdx].id;
+    player.src = `/scenarios/${SCENARIOS[defaultIdx].id}/clip.mp4`;
+    player.load();
+
+    select.addEventListener('change', () => {
+      player.src = `/scenarios/${select.value}/clip.mp4`;
+      player.load();
+    });
   }
-
-  select.addEventListener('change', () => loadScenario(select.value));
-  await loadScenario(SCENARIOS[0].id);
 })();
-
-async function loadScenario(id) {
-  currentScenario = SCENARIOS.find(s => s.id === id) || SCENARIOS[0];
-  const s = currentScenario;
-
-  const gameLabel = s.game ? `<b>${s.game}</b>` : id;
-  document.getElementById('header-title').innerHTML = `${s.title || 'Bug analysis'} in ${gameLabel}`;
-  document.getElementById('header-source').textContent = s.source ? `Source: ${s.source}` : '';
-  const engineParts = [s.engine && `Engine: ${s.engine}`, s.platform && `Platform: ${s.platform}`].filter(Boolean);
-  document.getElementById('header-engine').textContent = engineParts.join(' · ');
-  document.getElementById('footer-credit').textContent = s.credit || '';
-  document.title = `Atlantic · ${s.game || id}`;
-
-  const player = document.getElementById('player');
-  player.src = `/scenarios/${id}/clip.mp4`;
-  player.load();
-
-  const chips = [
-    s.game     && `<span class="chip"><b>${s.game}</b></span>`,
-    s.engine   && `<span class="chip">${s.engine}</span>`,
-    s.platform && `<span class="chip">${s.platform}</span>`,
-    ...(s.tags || []).map(t => `<span class="chip">${t}</span>`),
-  ].filter(Boolean);
-  document.getElementById('video-meta').innerHTML = chips.join('');
-  document.getElementById('frame-count').textContent = s.duration ? `${s.duration}s` : '';
-
-  resetPanels();
-}
-
-function resetPanels() {
-  geminiDot.className = 'status-dot';
-  geminiStatus.textContent = 'Idle';
-  geminiBody.innerHTML = `
-    <div class="agent-idle">
-      <div class="agent-idle-icon"></div>
-      <div>Awaiting video input</div>
-      <div style="margin-top:4px;font-size:11px">Native video understanding · multi-bug detection</div>
-    </div>`;
-
-  orchDot.className = 'status-dot';
-  orchStatus.textContent = 'Idle';
-  orchBody.innerHTML = `
-    <div class="orch-pending">
-      Waiting for Gemini to flag bugs<br>
-      <span style="font-size:11px">Tickets appear as issues are detected</span>
-    </div>`;
-
-  runBtn.disabled = false;
-  runBtn.textContent = 'Run QA Analysis →';
-  runBtn.style.background = '';
-}
 
 // ————————————————————————————————————————————————
 // Utilities
 // ————————————————————————————————————————————————
 function escapeHtml(s) {
   if (s == null) return '';
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 // ————————————————————————————————————————————————
 // API
 // ————————————————————————————————————————————————
-async function callGeminiAgent(onChunk, onBugFound) {
+async function callGeminiAgent(scenarioId, onChunk, onBugFound) {
   const response = await fetch('/api/gemini-agent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scenario: currentScenario?.id }),
+    body: JSON.stringify({ scenario: scenarioId }),
   });
 
   if (!response.ok) {
@@ -123,7 +110,7 @@ async function callGeminiAgent(onChunk, onBugFound) {
       try {
         const evt = JSON.parse(payload);
         if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
-          onChunk(evt.delta.text);
+          onChunk();
         } else if (evt.type === 'bug_found' && evt.bug) {
           onBugFound(evt.bug);
         }
@@ -132,11 +119,11 @@ async function callGeminiAgent(onChunk, onBugFound) {
   }
 }
 
-async function callOrchestrator(qaReport) {
+async function callOrchestrator(qaReport, scenarioId) {
   const response = await fetch('/api/orchestrator', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ qa_report: qaReport, scenario: currentScenario?.id }),
+    body: JSON.stringify({ qa_report: qaReport, scenario: scenarioId }),
   });
   if (!response.ok) {
     const err = await response.text();
@@ -146,21 +133,22 @@ async function callOrchestrator(qaReport) {
 }
 
 // ————————————————————————————————————————————————
-// Rendering
+// Ticket rendering
 // ————————————————————————————————————————————————
-function renderPendingCardHTML(idx, bugTitle, bugTimestamp) {
+function renderPendingCardHTML(idx, slotLabel, bugTitle, bugTimestamp) {
   return `
     <div class="ticket-pending">
       <span class="status-dot active"></span>
       <div>
-        <b>Bug #${idx}: ${escapeHtml(bugTitle || 'Detected issue')}</b>
+        <span class="ticket-slot">Slot ${escapeHtml(slotLabel)}</span>
+        <b style="margin-left:6px">${escapeHtml(bugTitle || 'Detected issue')}</b>
         ${bugTimestamp ? `<span style="color:var(--ink-faint);font-size:11px;margin-left:6px">@ ${escapeHtml(bugTimestamp)}</span>` : ''}
         <div class="ticket-pending-status" style="font-size:11px;color:var(--ink-faint);margin-top:3px">Queued…</div>
       </div>
     </div>`;
 }
 
-function renderTicketHTML(t, elapsedSec, bugIdx, bugTimestamp) {
+function renderTicketHTML(t, elapsedSec, idx, slotLabel, bugTimestamp) {
   const sevClass = `sev-${t.severity}`;
   const labelsHTML = (t.labels || []).map(l => `<span class="label-chip">${escapeHtml(l)}</span>`).join('');
   const steps = (t.repro_steps || []).map(s => `<li>${escapeHtml(s)}</li>`).join('');
@@ -169,7 +157,10 @@ function renderTicketHTML(t, elapsedSec, bugIdx, bugTimestamp) {
     <div class="ticket">
       <div class="ticket-header">
         <span class="ticket-id">${escapeHtml(t.ticket_id)}</span>
-        <span class="ticket-system">Jira · auto-filed${bugTimestamp ? ` · ${escapeHtml(bugTimestamp)}` : ''}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="ticket-slot">Slot ${escapeHtml(slotLabel)}</span>
+          <span class="ticket-system">${bugTimestamp ? escapeHtml(bugTimestamp) + ' · ' : ''}Jira · auto-filed</span>
+        </div>
       </div>
       <div class="ticket-title">${escapeHtml(t.title)}</div>
       <div class="ticket-row">
@@ -206,21 +197,36 @@ function renderTicketHTML(t, elapsedSec, bugIdx, bugTimestamp) {
       <b>Auto-fix:</b> ${t.auto_fix_possible ? 'eligible' : 'not eligible'} — ${escapeHtml(t.auto_fix_note || '')}
     </div>
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--rule);display:flex;justify-content:space-between;font-size:11px;color:var(--ink-faint)">
-      <span>Bug #${bugIdx} · Orchestrated in <b style="color:var(--blue);font-family:'Geist Mono',monospace">${elapsedSec.toFixed(1)}s</b></span>
+      <span>Ticket #${idx} · Slot ${escapeHtml(slotLabel)} · <b style="color:var(--blue);font-family:'Geist Mono',monospace">${elapsedSec.toFixed(1)}s</b></span>
       <span>Est. human time: <b style="color:var(--ink)">~15 min</b></span>
     </div>`;
 }
 
 // ————————————————————————————————————————————————
-// DOM refs
+// Reset
 // ————————————————————————————————————————————————
-const runBtn      = document.getElementById('run-btn');
-const geminiBody  = document.getElementById('gemini-body');
-const geminiDot   = document.getElementById('gemini-dot');
-const geminiStatus = document.getElementById('gemini-status');
-const orchBody    = document.getElementById('orch-body');
-const orchDot     = document.getElementById('orch-dot');
-const orchStatus  = document.getElementById('orch-status');
+function resetPanels() {
+  for (let i = 0; i < NUM_SLOTS; i++) {
+    const { dot, status, buglog } = slotEls(i);
+    dot.className = 'status-dot';
+    status.textContent = 'Idle';
+    buglog.innerHTML = `
+      <div class="agent-idle">
+        <div class="agent-idle-icon"></div>
+        <div>Awaiting input</div>
+      </div>`;
+  }
+  orchDot.className = 'status-dot';
+  orchStatus.textContent = 'Idle';
+  orchBody.innerHTML = `
+    <div class="orch-pending">
+      Waiting for QA Agents to start<br>
+      <span style="font-size:11px">Low severity bugs dismissed · rest get tickets</span>
+    </div>`;
+  runBtn.disabled = false;
+  runBtn.textContent = 'Run 3 QA Agents →';
+  runBtn.style.background = '';
+}
 
 // ————————————————————————————————————————————————
 // Main flow
@@ -229,28 +235,35 @@ async function run() {
   runBtn.disabled = true;
   runBtn.textContent = 'Running…';
 
-  geminiDot.className = 'status-dot active';
-  geminiStatus.textContent = 'Uploading & processing…';
-  geminiBody.innerHTML = `
-    <div class="bug-log" id="gemini-output">
-      <div class="bug-log-status" id="gemini-scan-status">
-        <span class="cursor"></span> Uploading clip to Gemini File API…
-      </div>
-    </div>`;
+  // Init slot panels
+  for (let i = 0; i < NUM_SLOTS; i++) {
+    const { dot, status, buglog } = slotEls(i);
+    dot.className = 'status-dot active';
+    status.textContent = 'Uploading…';
+    buglog.innerHTML = `
+      <div class="bug-log" id="buglog-inner-${i}">
+        <div class="bug-log-status" id="bugscan-${i}">
+          <span class="cursor"></span> Uploading clip…
+        </div>
+      </div>`;
+  }
 
+  // Init orchestrator
   orchDot.className = 'status-dot active';
   orchStatus.textContent = 'Waiting…';
   orchBody.innerHTML = `
-    <div class="orch-pending" id="orch-waiting">
-      <div style="margin-bottom:8px">Waiting for Gemini to flag bugs…</div>
-      <span style="font-size:11px">Tickets will appear as issues are detected</span>
+    <div id="orch-tickets"></div>
+    <div id="orch-waiting" style="color:var(--ink-faint);font-size:13px;padding:20px 0;text-align:center">
+      Waiting for agents to flag bugs…
     </div>`;
 
-  let bugsFound = 0;
+  // Shared state
+  let ticketCount = 0;
   let ticketsCreated = 0;
-  const orchPromises = [];
+  let dismissedCount = 0;
+  const bugsPerSlot = [0, 0, 0];
 
-  // Rate limiter: serialize calls, min 13s between starts (≤ 4.6/min, under the 5/min cap)
+  // Shared rate-limited orchestrator queue (13s gap = ≤4.6 calls/min)
   let orchCallChain = Promise.resolve();
   let lastOrchCallStart = 0;
   const ORCH_MIN_INTERVAL = 13000;
@@ -266,16 +279,37 @@ async function run() {
     return promise;
   }
 
-  const t0 = performance.now();
+  function updateOrchStatus() {
+    const parts = [];
+    if (ticketsCreated > 0) parts.push(`${ticketsCreated} ticket${ticketsCreated !== 1 ? 's' : ''} filed`);
+    if (dismissedCount > 0) parts.push(`${dismissedCount} low dismissed`);
+    if (parts.length) orchStatus.textContent = parts.join(' · ');
+  }
 
-  function handleBugFound(bug) {
-    bugsFound++;
-    const idx = bugsFound;
+  function getOrCreateDismissedSection() {
+    let section = document.getElementById('dismissed-section');
+    if (!section) {
+      section = document.createElement('div');
+      section.id = 'dismissed-section';
+      section.className = 'dismissed-section';
+      section.innerHTML = `
+        <div class="dismissed-header">Low severity · dismissed <span id="dismissed-count">(0)</span></div>
+        <div id="dismissed-list"></div>`;
+      orchBody.appendChild(section);
+    }
+    return section;
+  }
 
-    // Gemini panel: append compact one-liner
-    const gOutput = document.getElementById('gemini-output');
-    if (gOutput) {
-      document.getElementById('gemini-scan-status')?.remove();
+  const allPromises = [];
+
+  function handleBugFound(bug, slotIdx) {
+    const slotLabel = SLOT_LABELS[slotIdx];
+    bugsPerSlot[slotIdx]++;
+
+    // Update slot bug log
+    const inner = document.getElementById(`buglog-inner-${slotIdx}`);
+    if (inner) {
+      document.getElementById(`bugscan-${slotIdx}`)?.remove();
       const sevLower = (bug.severity || 'medium').toLowerCase();
       const line = document.createElement('div');
       line.className = 'bug-log-entry';
@@ -285,23 +319,49 @@ async function run() {
         <span class="sev sev-${sevLower}">${escapeHtml(sevLower)}</span>
         <code class="bug-log-cat">${escapeHtml(bug.category || '')}</code>
         ${bug.timestamp ? `<span class="bug-log-ts">${escapeHtml(bug.timestamp)}</span>` : ''}`;
-      gOutput.appendChild(line);
+      inner.appendChild(line);
+      // scroll bug log to latest
+      const buglogEl = document.getElementById(`slot-buglog-${slotIdx}`);
+      if (buglogEl) buglogEl.scrollTop = buglogEl.scrollHeight;
     }
 
-    // Orchestrator panel: pending card
+    // Dismiss low severity
+    if ((bug.severity || '').toLowerCase() === 'low') {
+      dismissedCount++;
+      getOrCreateDismissedSection();
+      document.getElementById('dismissed-count').textContent = `(${dismissedCount})`;
+      const list = document.getElementById('dismissed-list');
+      if (list) {
+        const entry = document.createElement('div');
+        entry.className = 'dismissed-entry';
+        entry.innerHTML = `
+          <span class="dismissed-slot">Slot ${escapeHtml(slotLabel)}</span>
+          <span>${escapeHtml(bug.title || 'Unknown')}</span>
+          ${bug.timestamp ? `<span style="color:var(--ink-faint);font-family:'Geist Mono',monospace;font-size:10px">${escapeHtml(bug.timestamp)}</span>` : ''}`;
+        list.appendChild(entry);
+      }
+      updateOrchStatus();
+      return;
+    }
+
+    // Queue orchestrator call for non-low bugs
     document.getElementById('orch-waiting')?.remove();
     orchDot.className = 'status-dot active';
+
+    ticketCount++;
+    const idx = ticketCount;
+    const scenarioId = slotEls(slotIdx).select.value;
 
     const wrapperEl = document.createElement('div');
     wrapperEl.id = `ticket-wrapper-${idx}`;
     wrapperEl.className = 'ticket-wrapper';
-    wrapperEl.innerHTML = renderPendingCardHTML(idx, bug.title, bug.timestamp);
-    orchBody.appendChild(wrapperEl);
+    wrapperEl.innerHTML = renderPendingCardHTML(idx, slotLabel, bug.title, bug.timestamp);
+
+    const ticketsContainer = document.getElementById('orch-tickets');
+    if (ticketsContainer) ticketsContainer.appendChild(wrapperEl);
     orchBody.scrollTop = orchBody.scrollHeight;
 
-    // Schedule orchestrator call (rate-limited, serialized)
     const promise = scheduleOrchCall(async () => {
-      // Mark as actively filing
       const wrapper = document.getElementById(`ticket-wrapper-${idx}`);
       const statusEl = wrapper?.querySelector('.ticket-pending-status');
       if (statusEl) statusEl.textContent = 'Filing ticket…';
@@ -317,74 +377,66 @@ async function run() {
           bug.category    && `Category: ${bug.category}`,
         ].filter(Boolean).join('\n');
 
-        const ticket = await callOrchestrator(bugReport);
+        const ticket = await callOrchestrator(bugReport, scenarioId);
         const elapsed = (performance.now() - t1) / 1000;
         ticketsCreated++;
 
         const w = document.getElementById(`ticket-wrapper-${idx}`);
-        if (w) w.innerHTML = renderTicketHTML(ticket, elapsed, idx, bug.timestamp);
+        if (w) w.innerHTML = renderTicketHTML(ticket, elapsed, idx, slotLabel, bug.timestamp);
 
-        orchStatus.textContent = `${ticketsCreated} ticket${ticketsCreated !== 1 ? 's' : ''} filed`;
+        updateOrchStatus();
         orchDot.className = 'status-dot done';
       } catch (err) {
         const w = document.getElementById(`ticket-wrapper-${idx}`);
-        if (w) w.innerHTML = `<div class="error-msg">Ticket ${idx} failed: ${escapeHtml(err.message)}</div>`;
+        if (w) w.innerHTML = `<div class="error-msg">Ticket ${idx} (Slot ${escapeHtml(slotLabel)}) failed: ${escapeHtml(err.message)}</div>`;
       }
     });
 
-    orchPromises.push(promise);
+    allPromises.push(promise);
   }
 
-  try {
-    await callGeminiAgent(
+  const t0 = performance.now();
+
+  // Run all 3 agents in parallel
+  const agentPromises = Array.from({ length: NUM_SLOTS }, (_, i) => {
+    const scenarioId = slotEls(i).select.value;
+    const { dot, status } = slotEls(i);
+
+    return callGeminiAgent(
+      scenarioId,
       () => {
-        geminiStatus.textContent = 'Analyzing…';
-        const scanStatus = document.getElementById('gemini-scan-status');
-        if (scanStatus) scanStatus.innerHTML = '<span class="cursor"></span> Scanning for bugs…';
+        status.textContent = 'Analyzing…';
+        const scanEl = document.getElementById(`bugscan-${i}`);
+        if (scanEl) scanEl.innerHTML = '<span class="cursor"></span> Scanning for bugs…';
       },
-      handleBugFound
-    );
-  } catch (err) {
-    geminiDot.className = 'status-dot error';
-    geminiStatus.textContent = 'Error';
-    geminiBody.innerHTML = `<div class="error-msg">Gemini agent failed: ${escapeHtml(err.message)}</div>`;
-    runBtn.disabled = false;
-    runBtn.textContent = 'Retry';
-    return;
-  }
+      (bug) => handleBugFound(bug, i)
+    ).then(() => {
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+      dot.className = 'status-dot done';
+      status.textContent = `Done · ${bugsPerSlot[i]} bug${bugsPerSlot[i] !== 1 ? 's' : ''} · ${elapsed}s`;
+      document.getElementById(`bugscan-${i}`)?.remove();
+    }).catch((err) => {
+      dot.className = 'status-dot error';
+      status.textContent = 'Error';
+      const inner = document.getElementById(`buglog-inner-${i}`);
+      if (inner) inner.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
+    });
+  });
 
-  const agentElapsed = (performance.now() - t0) / 1000;
-  geminiDot.className = 'status-dot done';
-  geminiStatus.textContent = `Complete · ${agentElapsed.toFixed(1)}s · ${bugsFound} bug${bugsFound !== 1 ? 's' : ''} flagged`;
+  // Wait for all agents to finish streaming
+  await Promise.allSettled(agentPromises);
 
-  document.getElementById('gemini-scan-status')?.remove();
+  // Wait for all outstanding orchestrator calls
+  await Promise.allSettled(allPromises);
 
-  const gOutput = document.getElementById('gemini-output');
-  if (gOutput) {
-    const timingDiv = document.createElement('div');
-    timingDiv.className = 'agent-timing';
-    timingDiv.innerHTML = `
-      <div>
-        <div class="big">${agentElapsed.toFixed(1)}s</div>
-        <div style="font-size:10px;color:var(--ink-faint);letter-spacing:0.06em;text-transform:uppercase;margin-top:2px">agent runtime</div>
-      </div>
-      <div class="vs">full video · <b>${bugsFound} bug${bugsFound !== 1 ? 's' : ''} flagged</b><br>native understanding</div>`;
-    gOutput.appendChild(timingDiv);
-  }
+  // Final status
+  const totalBugs = bugsPerSlot.reduce((a, b) => a + b, 0);
+  orchDot.className = 'status-dot done';
+  updateOrchStatus();
 
-  await Promise.allSettled(orchPromises);
-
-  if (bugsFound === 0) {
-    orchDot.className = 'status-dot done';
-    orchStatus.textContent = 'No bugs detected';
-    orchBody.innerHTML = `<div class="orch-pending">No bugs were flagged in this recording.</div>`;
-  } else {
-    orchDot.className = 'status-dot done';
-    orchStatus.textContent = `${ticketsCreated} ticket${ticketsCreated !== 1 ? 's' : ''} filed`;
-  }
-
-  runBtn.textContent = '✓ Analysis complete';
+  runBtn.textContent = `✓ Done · ${totalBugs} bugs · ${ticketsCreated} tickets`;
   runBtn.style.background = 'var(--green)';
+  runBtn.disabled = false;
 }
 
 runBtn.addEventListener('click', run);
