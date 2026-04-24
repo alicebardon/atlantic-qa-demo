@@ -612,6 +612,59 @@ body {
 }
 .footer b { color: var(--ink-muted); font-weight: 500; }
 
+/* Orchestrator severity columns */
+#orch-body {
+  max-height: none;
+  overflow-y: visible;
+}
+.severity-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.sev-col {
+  display: flex;
+  flex-direction: column;
+}
+.sev-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--chip-bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px 6px 0 0;
+}
+.sev-col-count {
+  font-size: 11px;
+  font-family: 'Geist Mono', monospace;
+  color: var(--ink-faint);
+  background: var(--bg);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--rule);
+  min-width: 24px;
+  text-align: center;
+}
+.sev-col-tickets {
+  border: 1px solid var(--rule);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 60px;
+}
+.sev-col-tickets .ticket-wrapper {
+  margin-bottom: 0;
+}
+.sev-col-tickets .ticket-wrapper + .ticket-wrapper {
+  padding-top: 0;
+  border-top: none;
+}
+
 /* Dismissed bugs section */
 .dismissed-section {
   margin-top: 20px;

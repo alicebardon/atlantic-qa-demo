@@ -252,9 +252,31 @@ async function run() {
   orchDot.className = 'status-dot active';
   orchStatus.textContent = 'Waiting…';
   orchBody.innerHTML = `
-    <div id="orch-tickets"></div>
     <div id="orch-waiting" style="color:var(--ink-faint);font-size:13px;padding:20px 0;text-align:center">
       Waiting for agents to flag bugs…
+    </div>
+    <div class="severity-columns" id="severity-columns" style="display:none">
+      <div class="sev-col">
+        <div class="sev-col-header">
+          <span class="sev sev-critical">Critical</span>
+          <span class="sev-col-count" id="col-count-critical">0</span>
+        </div>
+        <div class="sev-col-tickets" id="col-tickets-critical"></div>
+      </div>
+      <div class="sev-col">
+        <div class="sev-col-header">
+          <span class="sev sev-high">High</span>
+          <span class="sev-col-count" id="col-count-high">0</span>
+        </div>
+        <div class="sev-col-tickets" id="col-tickets-high"></div>
+      </div>
+      <div class="sev-col">
+        <div class="sev-col-header">
+          <span class="sev sev-medium">Medium</span>
+          <span class="sev-col-count" id="col-count-medium">0</span>
+        </div>
+        <div class="sev-col-tickets" id="col-tickets-medium"></div>
+      </div>
     </div>`;
 
   // Shared state
@@ -279,6 +301,21 @@ async function run() {
     return promise;
   }
 
+  function sevToColKey(severity) {
+    const s = (severity || '').toLowerCase();
+    if (s === 'critical') return 'critical';
+    if (s === 'high') return 'high';
+    return 'medium';
+  }
+
+  function updateColCounts() {
+    for (const key of ['critical', 'high', 'medium']) {
+      const count = document.getElementById(`col-tickets-${key}`)?.children.length || 0;
+      const el = document.getElementById(`col-count-${key}`);
+      if (el) el.textContent = count;
+    }
+  }
+
   function updateOrchStatus() {
     const parts = [];
     if (ticketsCreated > 0) parts.push(`${ticketsCreated} ticket${ticketsCreated !== 1 ? 's' : ''} filed`);
@@ -295,7 +332,9 @@ async function run() {
       section.innerHTML = `
         <div class="dismissed-header">Low severity · dismissed <span id="dismissed-count">(0)</span></div>
         <div id="dismissed-list"></div>`;
-      orchBody.appendChild(section);
+      // Append after severity columns (or at end of orchBody)
+      const cols = document.getElementById('severity-columns');
+      cols ? cols.after(section) : orchBody.appendChild(section);
     }
     return section;
   }
@@ -346,20 +385,20 @@ async function run() {
 
     // Queue orchestrator call for non-low bugs
     document.getElementById('orch-waiting')?.remove();
+    document.getElementById('severity-columns').style.display = '';
     orchDot.className = 'status-dot active';
 
     ticketCount++;
     const idx = ticketCount;
     const scenarioId = slotEls(slotIdx).select.value;
 
+    // Place pending card in the column matching Gemini's severity
+    const geminiColKey = sevToColKey(bug.severity);
     const wrapperEl = document.createElement('div');
     wrapperEl.id = `ticket-wrapper-${idx}`;
     wrapperEl.className = 'ticket-wrapper';
     wrapperEl.innerHTML = renderPendingCardHTML(idx, slotLabel, bug.title, bug.timestamp);
-
-    const ticketsContainer = document.getElementById('orch-tickets');
-    if (ticketsContainer) ticketsContainer.appendChild(wrapperEl);
-    orchBody.scrollTop = orchBody.scrollHeight;
+    document.getElementById(`col-tickets-${geminiColKey}`).appendChild(wrapperEl);
 
     const promise = scheduleOrchCall(async () => {
       const wrapper = document.getElementById(`ticket-wrapper-${idx}`);
@@ -381,9 +420,16 @@ async function run() {
         const elapsed = (performance.now() - t1) / 1000;
         ticketsCreated++;
 
+        // Move to correct column if orchestrator disagrees with Gemini's severity
+        const orchColKey = sevToColKey(ticket.severity);
         const w = document.getElementById(`ticket-wrapper-${idx}`);
-        if (w) w.innerHTML = renderTicketHTML(ticket, elapsed, idx, slotLabel, bug.timestamp);
-
+        if (w) {
+          if (orchColKey !== geminiColKey) {
+            document.getElementById(`col-tickets-${orchColKey}`).appendChild(w);
+          }
+          w.innerHTML = renderTicketHTML(ticket, elapsed, idx, slotLabel, bug.timestamp);
+        }
+        updateColCounts();
         updateOrchStatus();
         orchDot.className = 'status-dot done';
       } catch (err) {
